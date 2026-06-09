@@ -1,0 +1,31 @@
+build_commands:
+  - "pip install playwright"
+  - "python -m playwright install chromium"
+  - "python -m playwright install-deps chromium"
+  - "pip install geopandas matplotlib shapely"
+
+command:
+  - "streamlit"
+  - "run"
+  - "app.py"
+  - "--server.port"
+  - "8000"
+  - "--server.address"
+  - "0.0.0.0"
+  - "--server.headless"
+  - "true"
+  
+
+env:
+  - name: "STREAMLIT_BROWSER_GATHER_USAGE_STATS"
+    value: "false"
+  - name: "APP_PASSWORD"
+    value: "ee2026publisher"
+  - name: "GEMINI_API_KEY"
+    value: "AIzaSyDjNRliP1xPva9OTv0QuavtouePXTsjaJE"
+  - name: "HOOTSUITE_CLIENT_ID"
+    value: "a1f8e5e7-8eb4-4739-a0d6-4d97ac8215c2"
+  - name: "HOOTSUITE_CLIENT_SECRET"
+    value: "~4WBTBNKQAo7"
+  - name: "HOOTSUITE_REDIRECT_URI"
+    value: "https://ee-publisher-752551299576066.aws.databricksapps.com"

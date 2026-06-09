@@ -1,0 +1,23 @@
+# requirements.txt — EE Publisher
+# Agregar o actualizar en el proyecto de Databricks Apps
+
+# Core
+streamlit>=1.32.0
+Pillow>=10.0.0
+requests>=2.31.0
+beautifulsoup4>=4.12.0
+numpy>=1.24.0
+groq>=0.9.0
+
+geopandas>=0.14.0
+matplotlib>=3.8.0
+shapely>=2.0.0
+
+# IA
+google-genai>=1.0.0
+
+# Scraper de Registraduría (Playwright — 100% Python, sin Node.js)
+playwright>=1.40.0
+
+# Hootsuite / SocialFlow
+# (no requieren paquetes adicionales, usan requests)

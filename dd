@@ -1,0 +1,155 @@
+from PIL import Image, ImageDraw, ImageChops
+import os
+
+# =========================================================
+# CARPETAS
+# =========================================================
+
+carpeta = r"C:\Users\cmramirez\Downloads\Publisher_v2.1-main (1)\Publisher_v2.1-main\assets\candidatos"
+
+salida = os.path.join(carpeta, "normalizados")
+
+os.makedirs(salida, exist_ok=True)
+
+# =========================================================
+# CONFIG
+# =========================================================
+
+ANCHO_FINAL = 1286
+ALTO_FINAL = 2904
+
+OCUPACION = 0.92
+RADIO_ESQUINAS = 100
+
+def round_corners(image, radius):
+    if image.mode != "RGBA":
+        image = image.convert("RGBA")
+    mask = Image.new("L", image.size, 0)
+    draw = ImageDraw.Draw(mask)
+    draw.rounded_rectangle([0, 0, image.width, image.height], radius=radius, fill=255)
+    alpha = image.getchannel("A")
+    alpha = ImageChops.multiply(alpha, mask)
+    image.putalpha(alpha)
+    return image
+
+# =========================================================
+# NOMBRES
+# =========================================================
+
+CANDIDATOS_NOMBRES = {
+    "clara-lopez": "CLARA LÓPEZ",
+    "oscar-lizcano": "OSCAR LIZCANO",
+    "santiago-botero": "SANTIAGO BOTERO",
+    "miguel-uribe": "MIGUEL URIBE",
+    "sondra-macollins": "SONDRA MACOLLINS",
+    "ivan-cepeda": "IVÁN CEPEDA",
+    "abelardo-de-la-espriella": "ABELARDO DE LA ESPRIELLA",
+    "claudia-lopez": "CLAUDIA LÓPEZ",
+    "paloma-valencia": "PALOMA VALENCIA",
+    "sergio-fajardo": "SERGIO FAJARDO",
+    "roy-barreras": "ROY BARRERAS",
+    "gustavo-matamoros": "GUSTAVO MATAMOROS",
+    "luis-gilberto-murillo": "LUIS GILBERTO MURILLO",
+    "carlos-caicedo": "CARLOS CAICEDO",
+}
+
+extensiones = (".png", ".webp")
+
+# =========================================================
+# PROCESO
+# =========================================================
+
+for archivo in os.listdir(carpeta):
+
+    nombre_archivo, extension = os.path.splitext(archivo)
+
+    if extension.lower() not in extensiones:
+        continue
+
+    ruta = os.path.join(carpeta, archivo)
+
+    try:
+
+        img = Image.open(ruta).convert("RGBA")
+
+        # =============================================
+        # DETECTAR CONTENIDO REAL
+        # =============================================
+
+        alpha = img.getchannel("A")
+
+        bbox = alpha.getbbox()
+
+        # Si no detecta contenido, usar imagen completa
+        if bbox:
+            img = img.crop(bbox)
+
+        ancho, alto = img.size
+
+        # =============================================
+        # ESCALADO PROPORCIONAL
+        # =============================================
+
+        nueva_altura = int(ALTO_FINAL * OCUPACION)
+
+        ratio = nueva_altura / alto
+
+        nuevo_ancho = int(ancho * ratio)
+        nuevo_alto = int(alto * ratio)
+
+        img = img.resize(
+            (nuevo_ancho, nuevo_alto),
+            Image.LANCZOS
+        )
+
+        # =============================================
+        # CANVAS TRANSPARENTE
+        # =============================================
+
+        canvas = Image.new(
+            "RGBA",
+            (ANCHO_FINAL, ALTO_FINAL),
+            (0, 0, 0, 0)
+        )
+
+        # Centrado horizontal
+        x = (ANCHO_FINAL - nuevo_ancho) // 2
+
+        # Pegado abajo
+        y = ALTO_FINAL - nuevo_alto
+
+        canvas.paste(img, (x, y), img)
+        canvas = round_corners(canvas, RADIO_ESQUINAS)
+
+        # =============================================
+        # RENOMBRAR
+        # =============================================
+
+        nombre_visual = CANDIDATOS_NOMBRES.get(
+            nombre_archivo.lower(),
+            nombre_archivo.upper()
+        )
+
+        nuevo_nombre = f"{nombre_visual}.png"
+
+        nueva_ruta = os.path.join(
+            salida,
+            nuevo_nombre
+        )
+
+        # =============================================
+        # GUARDAR
+        # =============================================
+
+        canvas.save(
+            nueva_ruta,
+            format="PNG",
+            dpi=(300, 300)
+        )
+
+        print(f"✅ {archivo} → {nuevo_nombre}")
+
+    except Exception as e:
+        print(f"❌ Error en {archivo}: {e}")
+
+print("\n🎉 Proceso terminado.")
