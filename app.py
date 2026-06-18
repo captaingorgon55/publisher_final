@@ -1507,14 +1507,69 @@ with tab_resultados:
                     import traceback
                     with st.expander("Detalles"): st.code(traceback.format_exc())
 
+                st.markdown("---")
+            st.markdown("**Plan B — pegar texto de la Registraduría (departamentos para el mapa):**")
+            st.caption("Copiá el texto completo de resultados de la Registraduría y pegalo aquí.")
+            texto_registraduria = st.text_area(
+                "Texto de la Registraduría:",
+                key="texto_registraduria_deptos",
+                height=200,
+                placeholder="ANTIOQUIA\nMesas informadas:\n...",
+            )
+            if st.button("🗺️ Parsear y generar mapa", type="primary", use_container_width=True):
+                if texto_registraduria.strip():
+                    from parser_registraduria_deptos import parsear_texto_registraduria
+                    deptos_parsed = parsear_texto_registraduria(texto_registraduria)
+                    if deptos_parsed:
+                        meta_existente = st.session_state.get("datos_territoriales", {}).get("meta", {})
+                        st.session_state["datos_territoriales"] = {
+                            "meta":          meta_existente,
+                            "departamentos": deptos_parsed,
+                        }
+                        for k in ["carrusel_tarjetas","carrusel_boletin","carrusel_idx"]:
+                            st.session_state.pop(k, None)
+                        st.success(f"✅ {len(deptos_parsed)} departamentos cargados — andá al sub-tab 🗺️ Mapa Colombia")
+                        st.rerun()
+                    else:
+                        st.error("No se encontraron departamentos. Verificá que el texto tenga el formato correcto.")
+                else:
+                    st.warning("Pegá el texto primero.")
+
             if st.button("🗑️ Limpiar datos"):
                 for k in ["datos_candidatos","datos_territoriales","carrusel_tarjetas","carrusel_boletin","carrusel_idx"]:
                     st.session_state.pop(k, None)
                 st.rerun()
 
+            st.markdown("---")
+            st.markdown("**Plan B — pegar resultados manualmente:**")
+            datos_manuales = st.text_area(
+                "Pega aquí los resultados (formato libre):",
+                key="datos_manuales_txt",
+                height=120,
+                placeholder="Ej:\nABELARDO DE LA ESPRIELLA 43.7% 10.361.499\nIVÁN CEPEDA 40.9% 9.688.361",
+            )
+            col_b1, col_b2 = st.columns(2)
+            with col_b1:
+                if st.button("📋 Procesar texto", use_container_width=True):
+                    from scraper_registraduria import _parsear_texto_libre
+                    datos_struct = _parsear_texto_libre(datos_manuales)
+                    st.session_state["datos_candidatos"] = get_candidatos_manual(datos_struct)
+                    for k in ["carrusel_tarjetas","carrusel_boletin","carrusel_idx"]:
+                        st.session_state.pop(k, None)
+                    st.rerun()
+            with col_b2:
+                if st.button("📥 Usar texto directo", use_container_width=True):
+                    st.session_state["datos_candidatos"] = get_candidatos_manual(datos_manuales)
+                    for k in ["carrusel_tarjetas","carrusel_boletin","carrusel_idx"]:
+                        st.session_state.pop(k, None)
+                    st.rerun()
+
     with col_res_preview:
         candidatos_validos = [c for c in candidatos_data if c["nombre"].strip()]
-        cands_render       = st.session_state.get("datos_candidatos", candidatos_validos)
+        # Priorizar datos del scraper; si no hay o tienen porcentaje 0, usar formulario
+        _scraper_data = st.session_state.get("datos_candidatos")
+        _form_validos = [c for c in candidatos_validos if c.get("porcentaje", 0) > 0]
+        cands_render  = _scraper_data if _scraper_data else (_form_validos or candidatos_validos)
 
         subtab_resultados, subtab_mapa = st.tabs(["📊 Tarjeta resultados", "🗺️ Mapa Colombia"])
 
@@ -1562,8 +1617,17 @@ with tab_resultados:
                     if "carrusel_tarjetas" not in st.session_state or st.session_state.get("carrusel_boletin") != boletin_num:
                         with st.spinner("Generando carrusel de mapas..."):
                             try:
+                                # Si cands_render tiene porcentajes en 0, intentar obtener del scraper
+                                cands_para_mapa = cands_render
+                                if not cands_para_mapa or all(c.get("porcentaje", 0) == 0 for c in cands_para_mapa):
+                                    try:
+                                        cands_para_mapa = get_candidatos_resultados()
+                                        st.session_state["datos_candidatos"] = cands_para_mapa
+                                    except Exception:
+                                        pass
+
                                 tarjetas = render_carrusel_electoral(
-                                    candidatos_globales=cands_render,
+                                    candidatos_globales=cands_para_mapa,
                                     departamentos=deptos,
                                     boletin_text=boletin_label,
                                     meta=meta,
