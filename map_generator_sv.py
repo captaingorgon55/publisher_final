@@ -130,38 +130,120 @@ def _gdf():
         json.dump({"type":"FeatureCollection","features":col},fh)
     return gpd.read_file(str(GEOJSON_PATH))
 
-
 def _foto_circ(slug, size, color_rgb):
-    for ext in [".png",".jpg"]:
+    for ext in [".png", ".jpg"]:
         p = CANDS_DIR / f"{slug}{ext}"
+
         if p.exists():
             img = Image.open(p).convert("RGBA")
-            pad_size = int(min(img.width, img.height) * 0.20)
-            img = ImageOps.expand(img, border=pad_size, fill=(0,0,0,0))
-            extra_bottom = int(img.height * 0.20)
-            tmp = Image.new("RGBA", (img.width, img.height + extra_bottom), (0,0,0,0))
-            tmp.paste(img, (0,0), img)
-            img = tmp
-            img = ImageOps.fit(img, (size,size), method=Image.LANCZOS, centering=(0.5,0.0))
-            alpha = img.getchannel('A')
-            gray  = ImageOps.grayscale(img.convert("RGB"))
-            bw_img = Image.merge("RGBA", (gray, gray, gray, alpha))
-            bg = Image.new("RGBA", (size,size), color_rgb+(255,))
-            bg.paste(bw_img, (0,20), bw_img)
-            mask_4x = Image.new("L", (size*4, size*4), 0)
-            ImageDraw.Draw(mask_4x).ellipse([0,0,(size*4)-1,(size*4)-1], fill=255)
-            mask = mask_4x.resize((size,size), Image.LANCZOS)
-            out = Image.new("RGBA", (size,size), (0,0,0,0))
-            out.paste(bg, (0,0), mask)
-            return out
-    out = Image.new("RGBA", (size,size), (0,0,0,0))
-    mask_4x = Image.new("L", (size*4,size*4), 0)
-    ImageDraw.Draw(mask_4x).ellipse([0,0,(size*4)-1,(size*4)-1], fill=255)
-    mask = mask_4x.resize((size,size), Image.LANCZOS)
-    bg = Image.new("RGBA", (size,size), color_rgb+(255,))
-    out.paste(bg, (0,0), mask)
-    return out
 
+            # Espacio alrededor de la imagen
+            pad_size = int(min(img.width, img.height) * 0.12)
+            img = ImageOps.expand(
+                img,
+                border=pad_size,
+                fill=(0, 0, 0, 0)
+            )
+
+            # Espacio inferior para no cortar hombros
+            extra_bottom = int(img.height * 0.15)
+            tmp = Image.new(
+                "RGBA",
+                (img.width, img.height + extra_bottom),
+                (0, 0, 0, 0)
+            )
+            tmp.paste(img, (0, 0), img)
+            img = tmp
+
+            # Escalar manteniendo proporción y ocupando casi todo el círculo
+            img = ImageOps.contain(
+                img,
+                (size +100 , size + 100),
+                Image.LANCZOS
+            )
+
+            # Escala de grises conservando transparencia
+            alpha = img.getchannel("A")
+            gray = ImageOps.grayscale(img.convert("RGB"))
+            bw_img = Image.merge(
+                "RGBA",
+                (gray, gray, gray, alpha)
+            )
+
+            # Fondo del color del candidato
+            bg = Image.new(
+                "RGBA",
+                (size, size),
+                color_rgb + (255,)
+            )
+
+            # Posicionamiento
+            Y_OFFSET = 10  # positivo baja, negativo sube
+
+            x = (size - bw_img.width) // 2
+            y = (size - bw_img.height) // 2 + Y_OFFSET
+
+            bg.paste(bw_img, (x, y), bw_img)
+
+            # Máscara circular suavizada
+            mask_4x = Image.new(
+                "L",
+                (size * 4, size * 4),
+                0
+            )
+
+            ImageDraw.Draw(mask_4x).ellipse(
+                [0, 0, (size * 4) - 1, (size * 4) - 1],
+                fill=255
+            )
+
+            mask = mask_4x.resize(
+                (size, size),
+                Image.LANCZOS
+            )
+
+            out = Image.new(
+                "RGBA",
+                (size, size),
+                (0, 0, 0, 0)
+            )
+
+            out.paste(bg, (0, 0), mask)
+
+            return out
+
+    # Si no existe la imagen
+    mask_4x = Image.new(
+        "L",
+        (size * 4, size * 4),
+        0
+    )
+
+    ImageDraw.Draw(mask_4x).ellipse(
+        [0, 0, (size * 4) - 1, (size * 4) - 1],
+        fill=255
+    )
+
+    mask = mask_4x.resize(
+        (size, size),
+        Image.LANCZOS
+    )
+
+    bg = Image.new(
+        "RGBA",
+        (size, size),
+        color_rgb + (255,)
+    )
+
+    out = Image.new(
+        "RGBA",
+        (size, size),
+        (0, 0, 0, 0)
+    )
+
+    out.paste(bg, (0, 0), mask)
+
+    return out
 
 def _pegar_foto(canvas, slug, size, x, y, color_rgb):
     rgba_canvas = canvas.convert("RGBA")
@@ -197,9 +279,23 @@ def _badge(canvas, txt):
 
 
 def _get_slug(nombre_up):
+    """
+    Busca el slug del candidato en SEGUNDA_VUELTA a partir de su nombre en mayúsculas.
+    Acepta nombres parciales, con apellido compuesto, o con palabras extra (ej. 'CASTRO').
+    """
+    nombre_up = nombre_up.strip()
     for slug, info in SEGUNDA_VUELTA.items():
-        parts = info["nombre"].split()
-        if any(len(p)>3 and p in nombre_up for p in parts):
+        partes_sv = info["nombre"].upper().split()
+        partes_input = nombre_up.split()
+        # Coincidencia exacta primero
+        if info["nombre"].upper() == nombre_up:
+            return slug
+        # Todas las palabras del candidato registrado (de más de 3 letras) deben estar en el input
+        palabras_clave = [p for p in partes_sv if len(p) > 3]
+        if palabras_clave and all(p in partes_input for p in palabras_clave):
+            return slug
+        # Fallback: al menos una palabra clave de más de 4 letras está contenida como substring
+        if any(len(p) > 4 and p in nombre_up for p in partes_sv):
             return slug
     return None
 
@@ -211,30 +307,68 @@ def _get_color(nombre_up):
     return GRAY
 
 
+def _recalcular_globales_desde_deptos(candidatos_globales, departamentos):
+    """
+    Si candidatos_globales no tiene porcentajes válidos para algún candidato de
+    SEGUNDA_VUELTA, los recalcula sumando votos de los departamentos.
+    Siempre devuelve una lista con una entrada por cada slug de SEGUNDA_VUELTA.
+    """
+    # Sumar votos por slug desde los departamentos
+    votos_por_slug = {slug: 0 for slug in SEGUNDA_VUELTA}
+    for d in departamentos:
+        p1   = d.get("primer_lugar", {})
+        cand = p1.get("candidato", "").upper()
+        voto = int(p1.get("votos", 0))
+        slug = _get_slug(cand)
+        if slug:
+            votos_por_slug[slug] += voto
+
+    total = sum(votos_por_slug.values()) or 1
+
+    # Construir mapa nombre_upper -> datos desde candidatos_globales existentes
+    global_map = {}
+    for c in (candidatos_globales or []):
+        n = c.get("nombre", "").upper().strip()
+        if n:
+            global_map[n] = c
+        # También indexar por slug si matchea
+        slug = _get_slug(n)
+        if slug:
+            global_map[f"__slug__{slug}"] = c
+
+    resultado = []
+    for slug, info in SEGUNDA_VUELTA.items():
+        nombre_sv = info["nombre"].upper()
+        # Intentar encontrar en candidatos_globales
+        match = (
+            global_map.get(nombre_sv)
+            or global_map.get(f"__slug__{slug}")
+        )
+        pct_existente   = float(match.get("porcentaje", 0)) if match else 0
+        votos_existente = match.get("votos", "0")           if match else "0"
+
+        # Si el porcentaje existente es 0, recalcular desde deptos
+        if pct_existente == 0 and votos_por_slug[slug] > 0:
+            votos_calc = votos_por_slug[slug]
+            pct_calc   = round(votos_calc / total * 100, 2)
+            resultado.append({
+                "nombre":     nombre_sv,
+                "porcentaje": pct_calc,
+                "votos":      str(votos_calc),
+            })
+        else:
+            resultado.append({
+                "nombre":     nombre_sv,
+                "porcentaje": pct_existente,
+                "votos":      votos_existente,
+            })
+
+    return resultado
+
+
 def render_mapa_sv(departamentos, candidatos_globales, boletin_text="", meta=None):
-    # Si candidatos_globales tiene porcentajes en 0, calcularlos desde los departamentos
-    cands_con_datos = [c for c in candidatos_globales if float(c.get("porcentaje",0)) > 0]
-    if not cands_con_datos and departamentos:
-        votos_por_cand = {}
-        for d in departamentos:
-            p1 = d.get("primer_lugar", {})
-            cand = p1.get("candidato","").upper()
-            votos = int(p1.get("votos", 0))
-            votos_por_cand[cand] = votos_por_cand.get(cand, 0) + votos
-        total = sum(votos_por_cand.values()) or 1
-        candidatos_globales = [
-            {**c, 
-             "porcentaje": round(votos_por_cand.get(c.get("nombre","").upper(), 0) / total * 100, 2),
-             "votos": str(votos_por_cand.get(c.get("nombre","").upper(), 0))
-            }
-            for c in candidatos_globales
-        ]
-        # Si candidatos_globales estaba vacío, construirlo desde los votos
-        if not candidatos_globales:
-            candidatos_globales = [
-                {"nombre": cand, "porcentaje": round(votos/total*100, 2), "votos": str(votos)}
-                for cand, votos in sorted(votos_por_cand.items(), key=lambda x: x[1], reverse=True)
-            ]
+    # Siempre normalizar candidatos_globales usando deptos como fuente de verdad
+    candidatos_globales = _recalcular_globales_desde_deptos(candidatos_globales, departamentos)
 
     canvas = _base()
     draw   = ImageDraw.Draw(canvas)
@@ -278,12 +412,17 @@ def render_mapa_sv(departamentos, candidatos_globales, boletin_text="", meta=Non
     canvas = rgba.convert("RGB")
     draw   = ImageDraw.Draw(canvas)
 
-    ley_slot_h = (CONTENT_BOT - CONTENT_Y) // 2
-    FOTO_SZ    = 106
+    FOTO_SZ     = 106
+    BLOCK_H     = 318
+    avail_h     = CONTENT_BOT - CONTENT_Y
+    GAP_BETWEEN = max(10, (avail_h - 2 * BLOCK_H) // 2)
 
     for i, (slug, info) in enumerate(SEGUNDA_VUELTA.items()):
-        slot_y    = CONTENT_Y + i * ley_slot_h + 15
+        slot_y    = CONTENT_Y + i * (BLOCK_H + GAP_BETWEEN) + 5
         color_rgb = BAR_COLORS.get(info["color_key"], (150,150,150))
+
+        if slot_y + BLOCK_H > CONTENT_BOT:
+            break
 
         canvas = _pegar_foto(canvas, slug, FOTO_SZ, LEY_X, slot_y, color_rgb)
         draw   = ImageDraw.Draw(canvas)
@@ -292,21 +431,12 @@ def render_mapa_sv(departamentos, candidatos_globales, boletin_text="", meta=Non
         draw.text((LEY_X, nome_y),    info["display_l1"], font=_f(28,True), fill=DARK)
         draw.text((LEY_X, nome_y+30), info["display_l2"], font=_f(28,True), fill=DARK)
 
-        nombre_buscar = info["nombre"].upper()
-        match = None
-        # Búsqueda exacta primero
-        for c in candidatos_globales:
-            if c.get("nombre","").upper().strip() == nombre_buscar:
-                match = c
-                break
-        # Si no, búsqueda parcial por apellido
-        if not match:
-            for c in candidatos_globales:
-                cand_up = c.get("nombre","").upper()
-                partes  = nombre_buscar.split()
-                if any(len(p) > 4 and p in cand_up for p in partes):
-                    match = c
-                    break
+        # Buscar en candidatos_globales (ya normalizados, indexados por nombre de SEGUNDA_VUELTA)
+        nombre_sv = info["nombre"].upper()
+        match = next(
+            (c for c in candidatos_globales if c.get("nombre","").upper().strip() == nombre_sv),
+            None
+        )
         pct   = float(match.get("porcentaje", 0)) if match else 0
         votos = match.get("votos","0") if match else "0"
         try: vf = f"{int(str(votos).replace('.','').replace(',','')):,}".replace(",",".")
@@ -330,37 +460,17 @@ def render_mapa_sv(departamentos, candidatos_globales, boletin_text="", meta=Non
         draw.rectangle([LEY_X+pct_w, bar_y, LEY_X+bar_w_total, bar_y+bar_h], fill=NAVY)
 
         pct_y = bar_y + bar_h + 4
-        draw.text((LEY_X, pct_y), f"{pct:.2f} %".replace(".",","),
-                  font=_f(52,True), fill=DARK)
+        if pct_y + 52 <= CONTENT_BOT:
+            draw.text((LEY_X, pct_y), f"{pct:.2f} %".replace(".",","),
+                      font=_f(52,True), fill=DARK)
 
     return _badge(canvas, boletin_text)
 
 
 def render_todos_deptos(departamentos, candidatos_globales, boletin_text="", meta=None):
-    # Si candidatos_globales tiene porcentajes en 0, calcularlos desde los departamentos
-    cands_con_datos = [c for c in candidatos_globales if float(c.get("porcentaje",0)) > 0]
-    if not cands_con_datos and departamentos:
-        votos_por_cand = {}
-        for d in departamentos:
-            p1 = d.get("primer_lugar", {})
-            cand = p1.get("candidato","").upper()
-            votos = int(p1.get("votos", 0))
-            votos_por_cand[cand] = votos_por_cand.get(cand, 0) + votos
-        total = sum(votos_por_cand.values()) or 1
-        candidatos_globales = [
-            {**c, 
-             "porcentaje": round(votos_por_cand.get(c.get("nombre","").upper(), 0) / total * 100, 2),
-             "votos": str(votos_por_cand.get(c.get("nombre","").upper(), 0))
-            }
-            for c in candidatos_globales
-        ]
-        # Si candidatos_globales estaba vacío, construirlo desde los votos
-        if not candidatos_globales:
-            candidatos_globales = [
-                {"nombre": cand, "porcentaje": round(votos/total*100, 2), "votos": str(votos)}
-                for cand, votos in sorted(votos_por_cand.items(), key=lambda x: x[1], reverse=True)
-            ]
-            
+    # Siempre normalizar candidatos_globales usando deptos como fuente de verdad
+    candidatos_globales = _recalcular_globales_desde_deptos(candidatos_globales, departamentos)
+
     canvas = _base()
     draw   = ImageDraw.Draw(canvas)
     cx     = (BOX_X1 + BOX_X2) // 2
@@ -370,19 +480,11 @@ def render_todos_deptos(departamentos, candidatos_globales, boletin_text="", met
 
     cands_sv = []
     for slug, info in SEGUNDA_VUELTA.items():
-        nombre_buscar = info["nombre"].upper()
-        match = None
-        for c in candidatos_globales:
-            if c.get("nombre","").upper().strip() == nombre_buscar:
-                match = c
-                break
-        if not match:
-            for c in candidatos_globales:
-                cand_up = c.get("nombre","").upper()
-                partes  = nombre_buscar.split()
-                if any(len(p) > 4 and p in cand_up for p in partes):
-                    match = c
-                    break
+        nombre_sv = info["nombre"].upper()
+        match = next(
+            (c for c in candidatos_globales if c.get("nombre","").upper().strip() == nombre_sv),
+            None
+        )
         cands_sv.append({
             "slug":      slug,
             "info":      info,
