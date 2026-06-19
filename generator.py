@@ -2516,14 +2516,18 @@ def render_resultados_candidatos(candidatos, format_key="post", font_path=None, 
                 pct_size_base    = 95  
                 pill_size_base   = 20
                 nombre_size_base = 30
-                # Ajuste drástico para formato story para no tapar la cara
                 y_offset_factor  = 0.22 if format_key == "story" else 0.32
                 gap_pill         = 0.04
+            elif n == 3:
+                pct_size_base    = 84
+                pill_size_base   = 19
+                nombre_size_base = 27
+                y_offset_factor  = 0.20 if format_key == "story" else 0.29
+                gap_pill         = 0.03
             else:
                 pct_size_base    = 70
                 pill_size_base   = 16
                 nombre_size_base = 24
-                # Ajuste drástico para formato story para no tapar la cara
                 y_offset_factor  = 0.18 if format_key == "story" else 0.26
                 gap_pill         = 0.02
 

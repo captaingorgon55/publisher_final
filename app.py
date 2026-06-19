@@ -1108,10 +1108,11 @@ with tab_noticias:
                     st.session_state["card_generated"] = True
                     st.session_state["last_card_img"]  = img
 
-                    st.markdown('<div class="ee-preview-card">', unsafe_allow_html=True)
-                    st.image(img)
-                    st.markdown('</div>', unsafe_allow_html=True)
-                    st.markdown('</div>', unsafe_allow_html=True)
+                    col_img_prev, _ = st.columns([1, 1])
+                    with col_img_prev:
+                        st.markdown('<div class="ee-preview-card">', unsafe_allow_html=True)
+                        st.image(img, use_container_width=True)
+                        st.markdown('</div>', unsafe_allow_html=True)
 
                     # ── Ajustes debajo de la imagen ──────────
                     st.markdown("**Ajustar tarjeta**")
@@ -1360,272 +1361,410 @@ with tab_noticias:
                     with st.expander("Detalles del error"):
                         st.code(traceback.format_exc())
 
-
 # =====================================================
 # PESTAÑA 2: RESULTADOS ELECCIONES 2026
+# Reemplazar todo el bloque "with tab_resultados:" por esto
 # =====================================================
 with tab_resultados:
+    color_options = list(BAR_COLORS.keys())
+    def _cand_label(k): return cand_by_key.get(k, {}).get("nombre", k)
 
-    def update_prev_pct(idx):
-        st.session_state[f"prev_pct_{idx}"] = st.session_state.get(f"current_pct_{idx}", 0.0)
-        st.session_state[f"current_pct_{idx}"] = st.session_state[f"res_pct_{idx}"]
+    # ── Sub-tabs principales ──────────────────────────
+    subtab_boletin, subtab_mapa = st.tabs([
+        "📊 Boletín de resultados",
+        "🗺️ Mapa por departamento",
+    ])
 
-    col_res_controls, col_res_preview = st.columns([5, 4], gap="large")
+    # ══════════════════════════════════════════════════
+    # SUB-TAB 1: BOLETÍN
+    # ══════════════════════════════════════════════════
+    with subtab_boletin:
+        col_bol_ctrl, col_bol_prev = st.columns([5, 4], gap="large")
 
-    res_format   = st.session_state.get("res_format", "post")
-    boletin_text = st.session_state.get("res_boletin_text", "BOLETÍN 1")
+        with col_bol_ctrl:
+            st.subheader("📊 Boletín de resultados")
 
-    if "datos_candidatos" in st.session_state:
-        try:
-            res_img = render_resultados_candidatos(
-                candidatos=st.session_state["datos_candidatos"],
-                format_key=res_format,
-                boletin_text=boletin_text,
-            )
-            st.image(res_img)
-        except Exception:
-            pass
-
-    with col_res_controls:
-        st.subheader("🗳️ Generador de tarjetas de resultados")
-        st.caption("Selecciona candidatos del catálogo, ingresa porcentaje y votos.")
-
-        candidatos_disponibles = list_candidatos()
-        if not candidatos_disponibles:
-            st.error("⚠️ No hay candidatos cargados en assets/candidatos/. Agregá PNGs ahí y reintentá.")
-            st.stop()
-
-        cand_by_key  = {c["key"]: c for c in candidatos_disponibles}
-        cand_options = [c["key"] for c in candidatos_disponibles]
-
-        def _cand_label(k):
-            return cand_by_key.get(k, {}).get("nombre", k)
-
-        n_candidatos = st.slider(
-            "¿Cuántos candidatos vas a comparar?",
-            min_value=2, max_value=5, value=2, step=1,
-            key="res_n_candidatos",
-        )
-
-        res_format = st.radio(
-            "Formato",
-            options=["post", "story"],
-            format_func=lambda k: FORMATS[k]["name"] + " (" + FORMATS[k]["description"] + ")",
-            horizontal=True,
-            key="res_format",
-        )
-
-        boletin_text = st.text_input(
-            "Texto del boletín (esquina inferior derecha)",
-            value="BOLETÍN 1",
-            key="res_boletin_text",
-            placeholder="Ej: BOLETÍN 1, PRIMER REPORTE, etc.",
-            help="Aparecerá como recuadro rojo en la esquina inferior derecha del cuadro gris.",
-        )
-
-        st.markdown("---")
-        st.markdown("### Datos de los candidatos")
-        st.caption("Total disponibles en catálogo: " + str(len(candidatos_disponibles)))
-
-        candidatos_data = []
-        color_options   = list(BAR_COLORS.keys())
-
-        for i in range(n_candidatos):
-            st.markdown("**Candidato " + str(i + 1) + "**")
-
-            if f"current_pct_{i}" not in st.session_state:
-                st.session_state[f"current_pct_{i}"] = 0.0
-            if f"prev_pct_{i}" not in st.session_state:
-                st.session_state[f"prev_pct_{i}"] = 0.0
-
-            col_sel, col_pct, col_votos, col_color = st.columns([2.5, 3.5, 2, 2])
-
-            with col_sel:
-                sel_key = st.selectbox(
-                    "Candidato",
-                    options=cand_options,
-                    index=min(i, len(cand_options) - 1),
-                    format_func=_cand_label,
-                    key="res_cand_" + str(i),
+            # Config general
+            col_fmt, col_bol_txt = st.columns(2)
+            with col_fmt:
+                res_format = st.radio(
+                    "Formato",
+                    options=["post", "story"],
+                    format_func=lambda k: FORMATS[k]["name"],
+                    horizontal=True,
+                    key="res_format",
                 )
-            with col_pct:
-                pct = st.slider(
-                    "%",
-                    min_value=0.0, max_value=100.0, step=0.1,
-                    key="res_pct_" + str(i),
-                    on_change=update_prev_pct,
-                    args=(i,)
+            with col_bol_txt:
+                boletin_text = st.text_input(
+                    "Boletín",
+                    value="BOLETÍN 1",
+                    key="res_boletin_text",
                 )
-                prev_val = st.session_state[f"prev_pct_{i}"]
-                if prev_val > 0.0:
-                    st.caption(f"🔙 Anterior: {prev_val:.1f}%")
-            with col_votos:
-                votos = st.text_input(
-                    "Votos",
-                    key="res_votos_" + str(i),
-                    placeholder="Ej: 250XXX",
-                )
-            with col_color:
-                color = st.selectbox(
-                    "Color barra",
-                    options=color_options,
-                    index=i % len(color_options),
-                    key="res_color_" + str(i),
-                )
-
-            foto_img = load_candidato_image(sel_key)
-            nombre   = cand_by_key.get(sel_key, {}).get("nombre", "")
-            candidatos_data.append({
-                "foto":        foto_img,
-                "nombre":      nombre,
-                "porcentaje":  pct,
-                "votos":       votos,
-                "color_barra": color,
-            })
-            st.markdown("")
-
-        with st.expander("🔄 Importar resultados desde El Espectador", expanded=False):
-            st.caption("Obtiene resultados nacionales y por departamento directamente desde la API de El Espectador.")
-
-            if st.button("🚀 Obtener resultados + datos para mapa", type="primary"):
-                try:
-                    with st.spinner("Consultando API El Espectador..."):
-                        cands_scraped = get_candidatos_resultados()
-                        st.session_state["datos_candidatos"] = cands_scraped
-                    with st.spinner("Obteniendo resultados por departamento..."):
-                        territorial = get_resultados_territoriales()
-                        st.session_state["datos_territoriales"] = territorial
-                        for k in ["carrusel_tarjetas", "carrusel_boletin", "carrusel_idx"]:
-                            st.session_state.pop(k, None)
-                    n_deptos    = len(territorial.get("departamentos", []))
-                    boletin_api = territorial.get("meta", {}).get("boletin")
-                    mesas_api   = territorial.get("meta", {}).get("mesas_reportadas")
-                    st.success(f"✅ {len(cands_scraped)} candidatos · {n_deptos} departamentos · Boletín {boletin_api} · {mesas_api:.0f}% escrutado")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Error: {e}")
-                    import traceback
-                    with st.expander("Detalles"): st.code(traceback.format_exc())
-
-                st.markdown("---")
-            st.markdown("**Plan B — pegar texto de la Registraduría (departamentos para el mapa):**")
-            st.caption("Copiá el texto completo de resultados de la Registraduría y pegalo aquí.")
-            texto_registraduria = st.text_area(
-                "Texto de la Registraduría:",
-                key="texto_registraduria_deptos",
-                height=200,
-                placeholder="ANTIOQUIA\nMesas informadas:\n...",
-            )
-            if st.button("🗺️ Parsear y generar mapa", type="primary", use_container_width=True):
-                if texto_registraduria.strip():
-                    from parser_registraduria_deptos import parsear_texto_registraduria
-                    deptos_parsed = parsear_texto_registraduria(texto_registraduria)
-                    if deptos_parsed:
-                        meta_existente = st.session_state.get("datos_territoriales", {}).get("meta", {})
-                        st.session_state["datos_territoriales"] = {
-                            "meta":          meta_existente,
-                            "departamentos": deptos_parsed,
-                        }
-                        for k in ["carrusel_tarjetas","carrusel_boletin","carrusel_idx"]:
-                            st.session_state.pop(k, None)
-                        st.success(f"✅ {len(deptos_parsed)} departamentos cargados — andá al sub-tab 🗺️ Mapa Colombia")
-                        st.rerun()
-                    else:
-                        st.error("No se encontraron departamentos. Verificá que el texto tenga el formato correcto.")
-                else:
-                    st.warning("Pegá el texto primero.")
-
-            if st.button("🗑️ Limpiar datos"):
-                for k in ["datos_candidatos","datos_territoriales","carrusel_tarjetas","carrusel_boletin","carrusel_idx"]:
-                    st.session_state.pop(k, None)
-                st.rerun()
 
             st.markdown("---")
-            st.markdown("**Plan B — pegar resultados manualmente:**")
-            datos_manuales = st.text_area(
-                "Pega aquí los resultados (formato libre):",
-                key="datos_manuales_txt",
-                height=120,
-                placeholder="Ej:\nABELARDO DE LA ESPRIELLA 43.7% 10.361.499\nIVÁN CEPEDA 40.9% 9.688.361",
-            )
-            col_b1, col_b2 = st.columns(2)
-            with col_b1:
-                if st.button("📋 Procesar texto", use_container_width=True):
-                    from scraper_registraduria import _parsear_texto_libre
-                    datos_struct = _parsear_texto_libre(datos_manuales)
-                    st.session_state["datos_candidatos"] = get_candidatos_manual(datos_struct)
-                    for k in ["carrusel_tarjetas","carrusel_boletin","carrusel_idx"]:
-                        st.session_state.pop(k, None)
+
+            # ── Importar datos nacionales ─────────────
+            with st.expander("🔄 Importar datos automáticamente", expanded=False):
+                if st.button("🚀 Obtener desde El Espectador", type="primary",
+                             use_container_width=True, key="btn_scraper_boletin"):
+                    try:
+                        with st.spinner("Consultando API..."):
+                            cands_scraped = get_candidatos_resultados()
+                            st.session_state["datos_candidatos"] = cands_scraped
+                        st.success(f"✅ {len(cands_scraped)} candidatos importados")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Error: {e}")
+
+                st.markdown("**O pegar texto libre:**")
+                st.caption("Ej: ABELARDO DE LA ESPRIELLA 43.7% 10.361.499")
+                datos_texto = st.text_area(
+                    "Texto resultados:",
+                    key="datos_texto_boletin",
+                    height=100,
+                    label_visibility="collapsed",
+                    placeholder=(
+                        "ABELARDO DE LA ESPRIELLA 43.7% 10.361.499\n"
+                        "IVÁN CEPEDA 40.9% 9.688.361\n"
+                        "VOTO EN BLANCO 3.2% 758.000"
+                    ),
+                )
+                if st.button("📋 Procesar texto", use_container_width=True,
+                             key="btn_procesar_texto_boletin"):
+                    if datos_texto.strip():
+                        from scraper_registraduria import _parsear_texto_libre
+                        cands = get_candidatos_manual(_parsear_texto_libre(datos_texto))
+                        st.session_state["datos_candidatos"] = cands
+                        st.success(f"✅ {len(cands)} candidatos cargados")
+                        st.rerun()
+                    else:
+                        st.warning("Pegá el texto primero.")
+
+                if st.button("🗑️ Limpiar datos", use_container_width=True,
+                             key="btn_limpiar_boletin"):
+                    st.session_state.pop("datos_candidatos", None)
                     st.rerun()
-            with col_b2:
-                if st.button("📥 Usar texto directo", use_container_width=True):
-                    st.session_state["datos_candidatos"] = get_candidatos_manual(datos_manuales)
-                    for k in ["carrusel_tarjetas","carrusel_boletin","carrusel_idx"]:
-                        st.session_state.pop(k, None)
-                    st.rerun()
 
-    with col_res_preview:
-        candidatos_validos = [c for c in candidatos_data if c["nombre"].strip()]
-        # Priorizar datos del scraper; si no hay o tienen porcentaje 0, usar formulario
-        _scraper_data = st.session_state.get("datos_candidatos")
-        _form_validos = [c for c in candidatos_validos if c.get("porcentaje", 0) > 0]
-        cands_render  = _scraper_data if _scraper_data else (_form_validos or candidatos_validos)
+            st.markdown("---")
 
-        subtab_resultados, subtab_mapa = st.tabs(["📊 Tarjeta resultados", "🗺️ Mapa Colombia"])
+            # ── Candidatos ────────────────────────────
+            st.markdown("### Candidatos")
 
-        with subtab_resultados:
+            # ── Voto en blanco ────────────────────────
+            st.markdown("**Voto en blanco**")
+            vb_on = st.checkbox("Incluir voto en blanco", value=False, key="vb_incluir")
+            if vb_on:
+                vb1, vb2, vb3 = st.columns([1.5, 1.5, 1.2])
+                with vb1:
+                    vb_pct = st.number_input(
+                        "%", min_value=0.0, max_value=100.0,
+                        step=0.01, value=0.0, format="%.2f",
+                        key="vb_pct", label_visibility="collapsed",
+                    )
+                with vb2:
+                    vb_votos = st.text_input(
+                        "Votos", placeholder="0",
+                        key="vb_votos", label_visibility="collapsed",
+                    )
+                with vb3:
+                    vb_color = st.selectbox(
+                        "Color",
+                        options=color_options,
+                        index=color_options.index("Amarillo"),
+                        key="vb_color", label_visibility="collapsed",
+                    )
+                
+
+        # ── Preview boletín ───────────────────────────
+        with col_bol_prev:
+           
+            # Base: datos importados si existen, si no los del formulario
+            _importados = st.session_state.get("datos_candidatos")
+            if _importados:
+                # Partir de los importados y agregar voto en blanco si está activo
+                cands_render = [c for c in _importados if c.get("nombre","") != "VOTO EN BLANCO"]
+                if st.session_state.get("vb_incluir") and st.session_state.get("vb_pct", 0) > 0:
+                    cands_render = cands_render + [{
+                        "foto":        load_candidato_image("voto-en-blanco"),
+                        "nombre":      "VOTO EN BLANCO",
+                        "porcentaje":  st.session_state.get("vb_pct", 0),
+                        "votos":       st.session_state.get("vb_votos", ""),
+                        "color_barra": st.session_state.get("vb_color", "Amarillo"),
+                    }]
+            else:
+                cands_render = []
+
             if not cands_render:
-                st.markdown("""<div class="ee-preview-empty"><div class="ee-preview-empty-icon">🗳️</div><div style="font-weight:600;margin-bottom:6px;">Vista previa de resultados</div><div style="font-size:0.9rem;">Configura los candidatos para generar.</div></div>""", unsafe_allow_html=True)
+                st.markdown("""<div class="ee-preview-empty">
+                    <div class="ee-preview-empty-icon">🗳️</div>
+                    <div style="font-weight:600">Vista previa</div>
+                    <div style="font-size:0.9rem">Completá los datos para generar.</div>
+                </div>""", unsafe_allow_html=True)
             else:
                 try:
-                    res_img = render_resultados_candidatos(candidatos=cands_render, format_key=res_format, boletin_text=boletin_text)
-                    st.markdown('<div class="ee-preview-card">', unsafe_allow_html=True)
-                    st.image(res_img)
-                    st.markdown('</div>', unsafe_allow_html=True)
+                    res_img = render_resultados_candidatos(
+                        candidatos=cands_render,
+                        format_key=res_format,
+                        boletin_text=boletin_text,
+                    )
+                    col_img, _ = st.columns([3, 2])
+                    with col_img:
+                        st.markdown('<div class="ee-preview-card">', unsafe_allow_html=True)
+                        st.image(res_img, use_container_width=True)
+                        st.markdown('</div>', unsafe_allow_html=True)
+
                     res_buf = BytesIO()
                     res_img.save(res_buf, format="PNG")
                     res_buf.seek(0)
-                    st.download_button(label="⬇ Descargar tarjeta resultados", data=res_buf, file_name="resultados-" + boletin_text.lower().replace(" ","-") + ".png", mime="image/png", type="primary", key="res_download")
+                    st.download_button(
+                        label="⬇ Descargar boletín",
+                        data=res_buf,
+                        file_name=f"boletin-{boletin_text.lower().replace(' ','-')}.png",
+                        mime="image/png",
+                        type="primary",
+                        key="res_download",
+                    )
                 except Exception as e:
-                    st.error("Error al generar tarjeta: " + str(e))
+                    st.error("Error: " + str(e))
                     import traceback
                     with st.expander("Detalles"): st.code(traceback.format_exc())
 
-        with subtab_mapa:
+    # ══════════════════════════════════════════════════
+    # SUB-TAB 2: MAPA
+    # ══════════════════════════════════════════════════
+    with subtab_mapa:
+        col_map_ctrl, col_map_prev = st.columns([5, 4], gap="large")
+
+        with col_map_ctrl:
+            st.subheader("🗺️ Mapa por departamento")
+
+            map_boletin_text = st.text_input(
+                "Boletín del mapa",
+                value=st.session_state.get("res_boletin_text", "BOLETÍN 1"),
+                key="map_boletin_text",
+            )
+
+            st.markdown("---")
+
+            # ── Importar datos territoriales ──────────
+            with st.expander("🔄 Importar datos", expanded=True):
+                if st.button("🚀 Obtener desde El Espectador", type="primary",
+                             use_container_width=True, key="btn_scraper_mapa"):
+                    try:
+                        with st.spinner("Consultando API..."):
+                            cands_scraped = get_candidatos_resultados()
+                            st.session_state["datos_candidatos"] = cands_scraped
+                        with st.spinner("Obteniendo departamentos..."):
+                            territorial = get_resultados_territoriales()
+                            st.session_state["datos_territoriales"] = territorial
+                            for k in ["carrusel_tarjetas","carrusel_boletin","carrusel_idx"]:
+                                st.session_state.pop(k, None)
+                        n_d = len(territorial.get("departamentos", []))
+                        b   = territorial.get("meta", {}).get("boletin")
+                        m   = territorial.get("meta", {}).get("mesas_reportadas")
+                        st.success(f"✅ {n_d} deptos · Boletín {b} · {m:.0f}% escrutado")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Error: {e}")
+                        import traceback
+                        with st.expander("Detalles"): st.code(traceback.format_exc())
+
+                st.markdown("**O pegar texto de la Registraduría:**")
+                texto_reg = st.text_area(
+                    "Texto Registraduría:",
+                    key="texto_registraduria_deptos",
+                    height=160,
+                    label_visibility="collapsed",
+                    placeholder="ANTIOQUIA\nMesas informadas:\n15.801 mesas,\n...",
+                )
+                if st.button("🗺️ Parsear departamentos", use_container_width=True,
+                             key="btn_parsear_deptos"):
+                    if texto_reg.strip():
+                        from parser_registraduria_deptos import parsear_texto_registraduria
+                        deptos_parsed = parsear_texto_registraduria(texto_reg)
+                        if deptos_parsed:
+                            meta_ex = st.session_state.get("datos_territoriales", {}).get("meta", {})
+                            st.session_state["datos_territoriales"] = {
+                                "meta": meta_ex,
+                                "departamentos": deptos_parsed,
+                            }
+                            for k in ["carrusel_tarjetas","carrusel_boletin","carrusel_idx"]:
+                                st.session_state.pop(k, None)
+                            st.success(f"✅ {len(deptos_parsed)} departamentos cargados")
+                            st.rerun()
+                        else:
+                            st.error("No se encontraron departamentos.")
+                    else:
+                        st.warning("Pegá el texto primero.")
+
+                if st.button("🗑️ Limpiar datos del mapa", use_container_width=True,
+                             key="btn_limpiar_mapa"):
+                    for k in ["datos_territoriales","carrusel_tarjetas","carrusel_boletin","carrusel_idx"]:
+                        st.session_state.pop(k, None)
+                    st.rerun()
+
+            st.markdown("---")
+
+            # ── Editor de departamentos ───────────────
+            datos_territoriales = st.session_state.get("datos_territoriales")
+            if datos_territoriales:
+                deptos = datos_territoriales.get("departamentos", [])
+                meta   = datos_territoriales.get("meta", {})
+
+                if deptos:
+                    st.markdown(f"### Editar departamentos ({len(deptos)})")
+                    st.caption("Podés ajustar % y votos de cada departamento antes de generar.")
+
+                    st.markdown("### Editar totales nacionales")
+                    st.caption("Ajustá % y votos totales de cada candidato para la leyenda del mapa.")
+
+                    try:
+                        from map_generator_sv import SEGUNDA_VUELTA as SV
+                        cands_mapa_opciones = list(SV.items())
+                    except Exception:
+                        cands_mapa_opciones = []
+
+                    # Calcular totales actuales desde deptos si no hay datos importados
+                    _base_cands = st.session_state.get("datos_candidatos") or []
+                    votos_cand_calc = {}
+                    for d in deptos:
+                        p1   = d.get("primer_lugar", {})
+                        cand = p1.get("candidato", "").upper()
+                        v    = int(p1.get("votos", 0))
+                        votos_cand_calc[cand] = votos_cand_calc.get(cand, 0) + v
+                    total_calc = sum(votos_cand_calc.values()) or 1
+
+                    def _buscar_cand(nombre_buscar, lista):
+                        for c in lista:
+                            if c.get("nombre","").upper().strip() == nombre_buscar.upper():
+                                return c
+                        for c in lista:
+                            partes = nombre_buscar.upper().split()
+                            if any(len(p)>4 and p in c.get("nombre","").upper() for p in partes):
+                                return c
+                        return None
+
+                    cands_totales_editados = []
+                    th1, th2, th3 = st.columns([2.5, 1.8, 2.0])
+                    with th1: st.caption("**Candidato**")
+                    with th2: st.caption("**% total**")
+                    with th3: st.caption("**Votos totales**")
+
+                    for slug, info in (cands_mapa_opciones or []):
+                        nombre_sv = info["nombre"]
+                        color_rgb = info["color_key"]
+
+                        # Buscar valor base: primero importados, luego calculado desde deptos
+                        base = _buscar_cand(nombre_sv, _base_cands)
+                        if base and float(base.get("porcentaje", 0)) > 0:
+                            pct_base   = float(base.get("porcentaje", 0))
+                            votos_base = str(base.get("votos", ""))
+                        else:
+                            v_calc = votos_cand_calc.get(nombre_sv.upper(), 0)
+                            pct_base   = round(v_calc / total_calc * 100, 2)
+                            votos_base = str(v_calc)
+
+                        tc1, tc2, tc3 = st.columns([2.5, 1.8, 2.0])
+                        with tc1:
+                            st.markdown(
+                                f"<div style='padding-top:8px;font-size:0.85rem;"
+                                f"font-weight:600'>{info['display_l1']} {info['display_l2']}</div>",
+                                unsafe_allow_html=True,
+                            )
+                        with tc2:
+                            pct_ed = st.number_input(
+                                f"pct_tot_{slug}",
+                                min_value=0.0, max_value=100.0,
+                                step=0.01, value=pct_base,
+                                format="%.2f",
+                                key=f"map_tot_pct_{slug}",
+                                label_visibility="collapsed",
+                            )
+                        with tc3:
+                            votos_ed = st.text_input(
+                                f"v_tot_{slug}",
+                                value=votos_base,
+                                key=f"map_tot_votos_{slug}",
+                                label_visibility="collapsed",
+                            )
+
+                        cands_totales_editados.append({
+                            "nombre":      nombre_sv,
+                            "porcentaje":  pct_ed,
+                            "votos":       votos_ed,
+                            "color_barra": color_rgb,
+                            "foto":        None,
+                        })
+
+                    if st.button("💾 Aplicar y regenerar mapa",
+                                 type="primary", use_container_width=True,
+                                 key="btn_aplicar_ediciones"):
+                        # Actualizar candidatos globales con los totales editados
+                        st.session_state["datos_candidatos"] = cands_totales_editados
+                        # Mantener los departamentos como están (no se editan uno a uno)
+                        st.session_state["datos_territoriales"] = {
+                            "meta":          meta,
+                            "departamentos": deptos,
+                        }
+                        for k in ["carrusel_tarjetas","carrusel_boletin","carrusel_idx"]:
+                            st.session_state.pop(k, None)
+                        st.rerun()
+
+        # ── Preview mapa ──────────────────────────────
+        with col_map_prev:
             datos_territoriales = st.session_state.get("datos_territoriales")
 
             if not datos_territoriales:
-                st.markdown("""<div class="ee-preview-empty"><div class="ee-preview-empty-icon">🗺️</div><div style="font-weight:600;margin-bottom:6px;">Carrusel de mapas electorales</div><div style="font-size:0.9rem;">Usá el botón <strong>🚀 Obtener resultados + datos para mapa</strong> en la columna izquierda.</div></div>""", unsafe_allow_html=True)
+                st.markdown("""<div class="ee-preview-empty">
+                    <div class="ee-preview-empty-icon">🗺️</div>
+                    <div style="font-weight:600">Mapa electoral</div>
+                    <div style="font-size:0.9rem">Importá los datos desde El Espectador
+                    o pegá el texto de la Registraduría.</div>
+                </div>""", unsafe_allow_html=True)
             else:
-                deptos      = datos_territoriales.get("departamentos", [])
-                meta        = datos_territoriales.get("meta", {})
+                deptos = datos_territoriales.get("departamentos", [])
+                meta   = datos_territoriales.get("meta", {})
                 boletin_num = meta.get("boletin")
                 mesas       = meta.get("mesas_reportadas")
 
                 if not deptos:
-                    st.warning("No hay datos por departamento. Intentá obtener resultados de nuevo.")
+                    st.warning("Sin datos de departamentos.")
                 else:
+                    # Métricas
                     if boletin_num or mesas:
-                        col_b1, col_b2 = st.columns(2)
-                        with col_b1:
+                        mc1, mc2 = st.columns(2)
+                        with mc1:
                             if boletin_num: st.metric("Boletín", f"N° {boletin_num}")
-                        with col_b2:
+                        with mc2:
                             if mesas: st.metric("Escrutado", f"{mesas:.1f}%")
 
-                    boletin_label = f"Boletín {boletin_num}" if boletin_num else boletin_text
+                    boletin_label = map_boletin_text or (f"Boletín {boletin_num}" if boletin_num else "Boletín 1")
 
-                    if "carrusel_tarjetas" not in st.session_state or st.session_state.get("carrusel_boletin") != boletin_num:
-                        with st.spinner("Generando carrusel de mapas..."):
+                    # Obtener candidatos con datos reales
+                    _scraper = st.session_state.get("datos_candidatos")
+                    _form_v  = []
+                    cands_para_mapa = _scraper or _form_v or []
+
+                    if not cands_para_mapa or all(c.get("porcentaje",0)==0 for c in cands_para_mapa):
+                        # Calcular desde departamentos
+                        votos_cand = {}
+                        for d in deptos:
+                            p1   = d.get("primer_lugar",{})
+                            cand = p1.get("candidato","").upper()
+                            v    = int(p1.get("votos",0))
+                            votos_cand[cand] = votos_cand.get(cand,0) + v
+                        total = sum(votos_cand.values()) or 1
+                        cands_para_mapa = [
+                            {"nombre": c, "porcentaje": round(v/total*100,2), "votos": str(v)}
+                            for c, v in sorted(votos_cand.items(), key=lambda x: x[1], reverse=True)
+                        ]
+
+                    # Generar carrusel
+                    cache_key = (boletin_num, len(deptos))
+                    if ("carrusel_tarjetas" not in st.session_state
+                            or st.session_state.get("carrusel_boletin") != cache_key):
+                        with st.spinner("Generando carrusel..."):
                             try:
-                                # Si cands_render tiene porcentajes en 0, intentar obtener del scraper
-                                cands_para_mapa = cands_render
-                                if not cands_para_mapa or all(c.get("porcentaje", 0) == 0 for c in cands_para_mapa):
-                                    try:
-                                        cands_para_mapa = get_candidatos_resultados()
-                                        st.session_state["datos_candidatos"] = cands_para_mapa
-                                    except Exception:
-                                        pass
-
                                 tarjetas = render_carrusel_electoral(
                                     candidatos_globales=cands_para_mapa,
                                     departamentos=deptos,
@@ -1633,10 +1772,10 @@ with tab_resultados:
                                     meta=meta,
                                 )
                                 st.session_state["carrusel_tarjetas"] = tarjetas
-                                st.session_state["carrusel_boletin"]  = boletin_num
+                                st.session_state["carrusel_boletin"]  = cache_key
                                 st.session_state["carrusel_idx"]      = 0
                             except Exception as e:
-                                st.error(f"Error generando carrusel: {e}")
+                                st.error(f"Error: {e}")
                                 import traceback
                                 with st.expander("Detalles"): st.code(traceback.format_exc())
                                 st.stop()
@@ -1648,48 +1787,82 @@ with tab_resultados:
                             "🗺️ Tarjeta 1 — Mapa segunda vuelta",
                             "📊 Tarjeta 2 — Resultados por departamento",
                         ]
-                        NOMBRES_ARCHIVO = [
-                            f"01-mapa-segunda-vuelta-{boletin_label.lower().replace(' ','-')}.png",
-                            f"02-resultados-departamentos-{boletin_label.lower().replace(' ','-')}.png",
+                        NOMBRES = [
+                            f"01-mapa-sv-{boletin_label.lower().replace(' ','-')}.png",
+                            f"02-deptos-sv-{boletin_label.lower().replace(' ','-')}.png",
                         ]
 
-                        if "carrusel_idx" not in st.session_state: st.session_state["carrusel_idx"] = 0
+                        if "carrusel_idx" not in st.session_state:
+                            st.session_state["carrusel_idx"] = 0
                         idx = st.session_state["carrusel_idx"]
 
-                        puntos = "".join([f'<span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:{"#E31B23" if i==idx else "#D0D0D0"};margin:0 4px;"></span>' for i in range(len(tarjetas))])
+                        # Indicador de posición
+                        puntos = "".join([
+                            f'<span style="display:inline-block;width:10px;height:10px;'
+                            f'border-radius:50%;background:{"#E31B23" if i==idx else "#D0D0D0"};'
+                            f'margin:0 3px;"></span>'
+                            for i in range(len(tarjetas))
+                        ])
                         st.markdown(puntos, unsafe_allow_html=True)
                         st.caption(TITULOS[idx])
 
-                        st.markdown('<div class="ee-preview-card">', unsafe_allow_html=True)
-                        st.image(tarjetas[idx])
-                        st.markdown('</div>', unsafe_allow_html=True)
+                        # Preview pequeño
+                        col_img, _ = st.columns([3, 2])
+                        with col_img:
+                            st.markdown('<div class="ee-preview-card">', unsafe_allow_html=True)
+                            st.image(tarjetas[idx], use_container_width=True)
+                            st.markdown('</div>', unsafe_allow_html=True)
 
-                        col_prev, col_dl, col_next = st.columns([1, 2, 1])
-                        with col_prev:
-                            if st.button("← Anterior", disabled=(idx==0), key="car_prev", use_container_width=True):
-                                st.session_state["carrusel_idx"] -= 1; st.rerun()
-                        with col_next:
-                            if st.button("Siguiente →", disabled=(idx==len(tarjetas)-1), key="car_next", use_container_width=True):
-                                st.session_state["carrusel_idx"] += 1; st.rerun()
-                        with col_dl:
-                            buf_single = BytesIO()
-                            tarjetas[idx].save(buf_single, format="PNG")
-                            buf_single.seek(0)
-                            st.download_button(label="⬇ Descargar esta", data=buf_single, file_name=NOMBRES_ARCHIVO[idx], mime="image/png", type="primary", key=f"dl_single_{idx}", use_container_width=True)
+                        # Navegación y descarga
+                        nav1, nav2, nav3 = st.columns([1, 2, 1])
+                        with nav1:
+                            if st.button("←", disabled=(idx==0), key="car_prev",
+                                         use_container_width=True):
+                                st.session_state["carrusel_idx"] -= 1
+                                st.rerun()
+                        with nav3:
+                            if st.button("→", disabled=(idx==len(tarjetas)-1),
+                                         key="car_next", use_container_width=True):
+                                st.session_state["carrusel_idx"] += 1
+                                st.rerun()
+                        with nav2:
+                            buf_s = BytesIO()
+                            tarjetas[idx].save(buf_s, format="PNG")
+                            buf_s.seek(0)
+                            st.download_button(
+                                label="⬇ Descargar esta",
+                                data=buf_s,
+                                file_name=NOMBRES[idx],
+                                mime="image/png",
+                                type="primary",
+                                key=f"dl_single_{idx}",
+                                use_container_width=True,
+                            )
 
                         st.markdown("---")
+                        zip_b = carrusel_a_zip(tarjetas, boletin_label)
+                        st.download_button(
+                            label="⬇ Descargar ZIP (ambas tarjetas)",
+                            data=zip_b,
+                            file_name=f"carrusel-sv-{boletin_label.lower().replace(' ','-')}.zip",
+                            mime="application/zip",
+                            key="dl_zip_carrusel",
+                            use_container_width=True,
+                        )
 
-                        zip_bytes = carrusel_a_zip(tarjetas, boletin_label)
-                        st.download_button(label="⬇ Descargar las 3 tarjetas en ZIP", data=zip_bytes, file_name=f"carrusel-electoral-{boletin_label.lower().replace(' ','-')}.zip", mime="application/zip", key="dl_zip_carrusel", use_container_width=True)
-
-                        if st.button("🔄 Regenerar carrusel", key="regen_carrusel"):
-                            for k in ["carrusel_tarjetas","carrusel_boletin","carrusel_idx"]: st.session_state.pop(k, None)
-                            st.rerun()
-
-                        with st.expander(f"📋 Ver {len(deptos)} departamentos", expanded=False):
-                            for d in deptos:
-                                p1 = d.get("primer_lugar", {})
-                                p2 = d.get("segundo_lugar", {})
-                                p1_txt = f"{p1.get('candidato','—')} {p1.get('porcentaje',0):.1f}%"
-                                p2_txt = f"{p2.get('candidato','—')} {p2.get('porcentaje',0):.1f}%" if p2 else "—"
-                                st.markdown(f"**{d.get('nombre','')}** — 1° {p1_txt} · 2° {p2_txt}")
+                        col_regen, col_exp = st.columns([1, 2])
+                        with col_regen:
+                            if st.button("🔄 Regenerar", key="regen_carrusel",
+                                         use_container_width=True):
+                                for k in ["carrusel_tarjetas","carrusel_boletin","carrusel_idx"]:
+                                    st.session_state.pop(k, None)
+                                st.rerun()
+                        with col_exp:
+                            with st.expander(f"📋 {len(deptos)} deptos cargados"):
+                                for d in deptos:
+                                    p1 = d.get("primer_lugar", {})
+                                    cand_short = p1.get("candidato","—").split()[-1]
+                                    st.caption(
+                                        f"**{d.get('nombre','')}** — "
+                                        f"{cand_short} {p1.get('porcentaje',0):.1f}%"
+                                    )
