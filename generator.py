@@ -2433,25 +2433,6 @@ def render_resultados_candidatos(candidatos, format_key="post", font_path=None, 
         if n <= 3:
             # ── MODO NORMAL: texto abajo sobre la foto ───────────────────────
 
-            # 1. DIBUJAR LA BARRA PRIMERO (Detrás de la foto, más gruesa, base igual que degradado)
-            bar_zone_h   = int(bloque_h * 0.65) # Zona máxima para la barra
-            bar_h        = int(bar_zone_h * (pct / max_pct)) if max_pct > 0 else 0
-            bar_w        = max(15, int(col_w * 0.08)) # Barra más gruesa
-            bar_x        = col_left + int(col_w * 0.06) 
-            bar_bottom_y = bloque_bottom # Punto de partida = base del bloque (igual al degradado)
-            bar_top_y    = bar_bottom_y - bar_h
-
-            if bar_h > 5:
-                try:
-                    draw_bg.rounded_rectangle(
-                        [bar_x, bar_top_y, bar_x + bar_w, bar_bottom_y],
-                        radius=bar_w // 2, fill=bar_color,
-                    )
-                    # Quitar el borde redondeado inferior para que asiente en la base
-                    draw_bg.rectangle([bar_x, bar_bottom_y - bar_w, bar_x + bar_w, bar_bottom_y], fill=bar_color)
-                except AttributeError:
-                    draw_bg.rectangle([bar_x, bar_top_y, bar_x + bar_w, bar_bottom_y], fill=bar_color)
-
             # 2. PEGAR LA FOTO Y EL DEGRADADO (Quedan encima de la barra)
             foto = cand.get("foto")
             if foto is not None:
@@ -2828,9 +2809,9 @@ def render_resultados_candidatos(candidatos, format_key="post", font_path=None, 
         box_w = text_w + pad_x * 2
         box_h = text_h + pad_y * 2
 
-        # Posicion: DEBAJO del cuadro gris, alineado a la derecha
+        # Posicion: debajo del cuadro gris con más separación
         margin_x = int(canvas_w * 0.015)
-        margin_y = int(canvas_h * 0.02)  # separacion entre cuadro gris y boletin
+        margin_y = int(canvas_h * 0.06)
         box_x = bloque_right - box_w - margin_x
         box_y = bloque_bottom + margin_y
 
