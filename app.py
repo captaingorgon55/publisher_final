@@ -1538,11 +1538,38 @@ with tab_resultados:
         with col_map_ctrl:
             st.subheader("🗺️ Mapa por departamento")
 
-            map_boletin_text = st.text_input(
-                "Boletín del mapa",
-                value=st.session_state.get("res_boletin_text", "BOLETÍN 1"),
-                key="map_boletin_text",
+            col_modo1, col_modo2 = st.columns(2)
+            with col_modo1:
+                map_boletin_text = st.text_input(
+                    "Boletín",
+                    value=st.session_state.get("res_boletin_text", "BOLETÍN 1"),
+                    key="map_boletin_text",
+                )
+            with col_modo2:
+                modo_valor = st.radio(
+                    "Mostrar en lista de deptos",
+                    options=["porcentaje", "votos"],
+                    format_func=lambda x: "% de votos" if x == "porcentaje" else "Cantidad de votos",
+                    horizontal=True,
+                    key="map_modo_valor",
+                )
+            # ── Modo: departamentos o municipios ─────────────
+            modo_mapa = st.radio(
+                "Tipo de mapa",
+                options=["departamentos", "municipios"],
+                format_func=lambda x: "🗺️ Colombia por departamentos" if x == "departamentos" else "🔍 Un departamento por municipios",
+                horizontal=True,
+                key="map_modo",
             )
+
+            if modo_mapa == "municipios":
+                from map_generator_municipios import listar_deptos_disponibles
+                deptos_disponibles = listar_deptos_disponibles()
+                depto_seleccionado = st.selectbox(
+                    "Departamento",
+                    options=deptos_disponibles,
+                    key="map_depto_seleccionado",
+                )
 
             st.markdown("---")
 
@@ -1710,7 +1737,7 @@ with tab_resultados:
                             st.session_state.pop(k, None)
                         st.rerun()
 
-        # ── Preview mapa ──────────────────────────────
+       # ── Preview mapa ──────────────────────────────
         with col_map_prev:
             datos_territoriales = st.session_state.get("datos_territoriales")
 
@@ -1746,7 +1773,6 @@ with tab_resultados:
                     cands_para_mapa = _scraper or _form_v or []
 
                     if not cands_para_mapa or all(c.get("porcentaje",0)==0 for c in cands_para_mapa):
-                        # Calcular desde departamentos
                         votos_cand = {}
                         for d in deptos:
                             p1   = d.get("primer_lugar",{})
@@ -1759,20 +1785,53 @@ with tab_resultados:
                             for c, v in sorted(votos_cand.items(), key=lambda x: x[1], reverse=True)
                         ]
 
-                    # Generar carrusel
-                    cache_key = (boletin_num, len(deptos))
+                    # ── CAMBIO 1: Generar carrusel — departamentos o municipios ──
+                    modo_mapa  = st.session_state.get("map_modo", "departamentos")
+                    depto_sel  = st.session_state.get("map_depto_seleccionado", "")
+                    modo_val   = st.session_state.get("map_modo_valor", "porcentaje")
+                    cache_key  = (boletin_num, len(deptos), modo_mapa, depto_sel, modo_val)
+
                     if ("carrusel_tarjetas" not in st.session_state
                             or st.session_state.get("carrusel_boletin") != cache_key):
-                        with st.spinner("Generando carrusel..."):
+                        with st.spinner("Generando mapa..."):
                             try:
-                                tarjetas = render_carrusel_electoral(
-                                    candidatos_globales=cands_para_mapa,
-                                    departamentos=deptos,
-                                    boletin_text=boletin_label,
-                                    meta=meta,
-                                )
+                                if modo_mapa == "municipios" and depto_sel:
+                                    from map_generator_municipios import render_carrusel_municipios
+                                    from parser_registraduria_deptos import parsear_texto_registraduria
+                                    texto_reg_actual = st.session_state.get("texto_registraduria_deptos","")
+                                    muns_depto = parsear_texto_registraduria(texto_reg_actual) if texto_reg_actual else []
+                                    tarjetas = render_carrusel_municipios(
+                                        depto_nombre=depto_sel,
+                                        municipios=muns_depto,
+                                        candidatos_globales=cands_para_mapa,
+                                        boletin_text=boletin_label,
+                                        meta=meta,
+                                        modo_valor=modo_val,
+                                    )
+                                    TITULOS_DIN      = [f"🔍 {depto_sel} — Municipios"]
+                                    NOMBRES_DIN      = [f"municipios-{depto_sel.lower().replace(' ','-')}-{boletin_label.lower().replace(' ','-')}.png"]
+                                else:
+                                    tarjetas = render_carrusel_electoral(
+                                        candidatos_globales=cands_para_mapa,
+                                        departamentos=deptos,
+                                        boletin_text=boletin_label,
+                                        meta=meta,
+                                        modo_valor=modo_val,
+                                    )
+                                    TITULOS_DIN = [
+                                        "🗺️ Tarjeta 1 — Mapa electoral",
+                                        "📊 Tarjeta 2 — Deptos Espriella",
+                                        "📊 Tarjeta 3 — Deptos Cepeda",
+                                    ]
+                                    NOMBRES_DIN = [
+                                        f"01-mapa-electoral-{boletin_label.lower().replace(' ','-')}.png",
+                                        f"02-deptos-espriella-{boletin_label.lower().replace(' ','-')}.png",
+                                        f"03-deptos-cepeda-{boletin_label.lower().replace(' ','-')}.png",
+                                    ]
                                 st.session_state["carrusel_tarjetas"] = tarjetas
                                 st.session_state["carrusel_boletin"]  = cache_key
+                                st.session_state["carrusel_titulos"]  = TITULOS_DIN
+                                st.session_state["carrusel_nombres"]  = NOMBRES_DIN
                                 st.session_state["carrusel_idx"]      = 0
                             except Exception as e:
                                 st.error(f"Error: {e}")
@@ -1782,15 +1841,10 @@ with tab_resultados:
 
                     tarjetas = st.session_state.get("carrusel_tarjetas", [])
 
+                    # ── CAMBIO 2: TITULOS y NOMBRES dinámicos ──
                     if tarjetas:
-                        TITULOS = [
-                            "🗺️ Tarjeta 1 — Mapa segunda vuelta",
-                            "📊 Tarjeta 2 — Resultados por departamento",
-                        ]
-                        NOMBRES = [
-                            f"01-mapa-sv-{boletin_label.lower().replace(' ','-')}.png",
-                            f"02-deptos-sv-{boletin_label.lower().replace(' ','-')}.png",
-                        ]
+                        TITULOS         = st.session_state.get("carrusel_titulos", ["Tarjeta 1"])
+                        NOMBRES_ARCHIVO = st.session_state.get("carrusel_nombres", ["tarjeta.png"])
 
                         if "carrusel_idx" not in st.session_state:
                             st.session_state["carrusel_idx"] = 0
@@ -1832,7 +1886,8 @@ with tab_resultados:
                             st.download_button(
                                 label="⬇ Descargar esta",
                                 data=buf_s,
-                                file_name=NOMBRES[idx],
+                                # ── CAMBIO 3: NOMBRES_ARCHIVO en vez de NOMBRES ──
+                                file_name=NOMBRES_ARCHIVO[idx],
                                 mime="image/png",
                                 type="primary",
                                 key=f"dl_single_{idx}",
@@ -1842,7 +1897,7 @@ with tab_resultados:
                         st.markdown("---")
                         zip_b = carrusel_a_zip(tarjetas, boletin_label)
                         st.download_button(
-                            label="⬇ Descargar ZIP (ambas tarjetas)",
+                            label="⬇ Descargar ZIP las 3 tarjetas",
                             data=zip_b,
                             file_name=f"carrusel-sv-{boletin_label.lower().replace(' ','-')}.zip",
                             mime="application/zip",
