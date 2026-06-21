@@ -27,7 +27,7 @@ BOX_W = BOX_X2 - BOX_X1
 BOX_H = BOX_Y2 - BOX_Y1
 
 LOGO_BOTTOM = 210
-TITLE_Y     = LOGO_BOTTOM + 25
+TITLE_Y     = LOGO_BOTTOM + 55
 TITLE_H     = 65
 CONTENT_Y   = TITLE_Y + TITLE_H + 20
 CONTENT_BOT = BOX_Y2 - 20
@@ -272,7 +272,7 @@ def _badge(canvas, txt):
     bb   = draw.textbbox((0,0), t, font=font)
     bw, bh = bb[2]-bb[0]+24, bb[3]-bb[1]+14
     bx = BOX_X2 - bw - 12
-    by = BOX_Y2 - bh - 12
+    by = BOX_Y2 + 20
     draw.rectangle([bx, by, bx+bw, by+bh], fill=RED)
     draw.text((bx+12, by+7-bb[1]), t, font=font, fill=WHITE)
     return canvas
